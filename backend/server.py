@@ -179,6 +179,11 @@ async def register_user(user_data: UserRegistration):
     # Create default accounts
     accounts = create_user_accounts(user_id)
     
+    # Convert ObjectId to string for all accounts
+    for account in accounts:
+        if "_id" in account:
+            account["_id"] = str(account["_id"])
+    
     # Generate JWT token
     token = create_jwt_token(user)
     
