@@ -221,9 +221,14 @@ async def login_user(login_data: UserLogin):
 @app.get("/api/accounts")
 async def get_user_accounts(current_user = Depends(get_current_user)):
     accounts = list(db.accounts.find(
-        {"user_id": current_user["user_id"]},
-        {"_id": 0}
+        {"user_id": current_user["user_id"]}
     ))
+    
+    # Convert ObjectId to string to make it JSON serializable
+    for account in accounts:
+        if "_id" in account:
+            account["_id"] = str(account["_id"])
+    
     return {"accounts": accounts}
 
 @app.get("/api/accounts/{account_id}/transactions")
