@@ -324,6 +324,10 @@ async def create_transfer(transfer_data: TransferRequest, current_user = Depends
             "user_id": current_user["user_id"]
         })
     
+    # Convert ObjectId to string
+    if "_id" in transaction:
+        transaction["_id"] = str(transaction["_id"])
+    
     return {
         "message": "Transfer initiated successfully",
         "transaction": transaction
