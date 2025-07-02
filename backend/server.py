@@ -131,7 +131,13 @@ def create_user_accounts(user_id: str):
             "updated_at": datetime.utcnow()
         }
     ]
-    db.accounts.insert_many(accounts)
+    
+    result = db.accounts.insert_many(accounts)
+    
+    # Add _id to each account
+    for i, account_id in enumerate(result.inserted_ids):
+        accounts[i]["_id"] = str(account_id)
+        
     return accounts
 
 def create_transaction(transaction_data: dict):
