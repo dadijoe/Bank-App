@@ -242,9 +242,13 @@ async def get_account_transactions(account_id: str, current_user = Depends(get_c
         raise HTTPException(status_code=403, detail="Access denied")
     
     transactions = list(db.transactions.find(
-        {"$or": [{"from_account_id": account_id}, {"to_account_id": account_id}]},
-        {"_id": 0}
+        {"$or": [{"from_account_id": account_id}, {"to_account_id": account_id}]}
     ).sort("created_at", -1).limit(50))
+    
+    # Convert ObjectId to string to make it JSON serializable
+    for transaction in transactions:
+        if "_id" in transaction:
+            transaction["_id"] = str(transaction["_id"])
     
     return {"transactions": transactions}
 
