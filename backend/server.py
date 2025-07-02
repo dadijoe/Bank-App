@@ -363,7 +363,6 @@ async def get_all_accounts(current_user = Depends(get_current_user)):
         },
         {
             "$project": {
-                "_id": 0,
                 "account_id": 1,
                 "account_number": 1,
                 "account_type": 1,
@@ -377,6 +376,12 @@ async def get_all_accounts(current_user = Depends(get_current_user)):
     ]
     
     accounts = list(db.accounts.aggregate(pipeline))
+    
+    # Convert ObjectId to string to make it JSON serializable
+    for account in accounts:
+        if "_id" in account:
+            account["_id"] = str(account["_id"])
+    
     return {"accounts": accounts}
 
 @app.post("/api/admin/credit-debit")
