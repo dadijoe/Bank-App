@@ -303,5 +303,17 @@ class BankingAPITest(unittest.TestCase):
         print("✅ Super admin backdated transaction successfully")
 
 if __name__ == "__main__":
-    # Run tests in order
-    unittest.main(argv=['first-arg-is-ignored'], exit=False)
+    # Create a test suite that runs tests in order
+    test_suite = unittest.TestSuite()
+    test_classes = [BankingAPITest]
+    
+    for test_class in test_classes:
+        for method_name in sorted([method for method in dir(test_class) if method.startswith('test_')]):
+            test_suite.addTest(test_class(method_name))
+    
+    # Run the test suite
+    runner = unittest.TextTestRunner(verbosity=2)
+    runner.run(test_suite)
+    
+    print("\n=== SUMMARY ===")
+    print(f"Total tests run: {test_suite.countTestCases()}")
