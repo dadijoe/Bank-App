@@ -611,6 +611,15 @@ class BankingAPITester:
         self.run_test("Internal Transfer", self.test_internal_transfer)
         self.run_test("Admin Credit Account", self.test_admin_credit_account)
         
+        # Enhanced feature tests
+        self.run_test("Transaction Filtering", self.test_transaction_filtering)
+        self.run_test("Account Statement", self.test_account_statement)
+        self.run_test("Failed Login Tracking", self.test_failed_login_tracking)
+        self.run_test("Admin Analytics", self.test_admin_analytics)
+        self.run_test("User Status Management", self.test_user_status_management)
+        self.run_test("Bulk Operations", self.test_bulk_operations)
+        self.run_test("Transfer Limits", self.test_transfer_limits)
+        
         # Print summary
         print("\n=== TEST SUMMARY ===")
         print(f"Tests passed: {self.tests_passed}/{self.tests_run} ({self.tests_passed/self.tests_run*100:.1f}%)")
