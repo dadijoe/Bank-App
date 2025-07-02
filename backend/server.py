@@ -423,7 +423,13 @@ async def get_all_transactions(current_user = Depends(get_current_user)):
     if current_user["role"] not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    transactions = list(db.transactions.find({}, {"_id": 0}).sort("created_at", -1).limit(100))
+    transactions = list(db.transactions.find({}).sort("created_at", -1).limit(100))
+    
+    # Convert ObjectId to string to make it JSON serializable
+    for transaction in transactions:
+        if "_id" in transaction:
+            transaction["_id"] = str(transaction["_id"])
+    
     return {"transactions": transactions}
 
 # Create admin user on startup
