@@ -432,7 +432,8 @@ async def admin_credit_debit(transaction_data: AdminCreditDebit, current_user = 
         "backdated": transaction_data.backdate is not None
     }
     
-    db.transactions.insert_one(transaction)
+    result = db.transactions.insert_one(transaction)
+    transaction["_id"] = str(result.inserted_id)
     
     return {
         "message": f"Account {transaction_data.transaction_type} successful",
