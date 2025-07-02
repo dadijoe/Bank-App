@@ -1,38 +1,301 @@
-.App {
-    text-align: center;
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Custom banking-themed styles */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Banking card animations */
+.account-card {
+  transition: all 0.3s ease;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.account-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+/* Professional button styles */
+.btn-primary {
+  @apply bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-200;
 }
 
-.App-link {
-    color: #61dafb;
+.btn-secondary {
+  @apply bg-gray-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-600 transition duration-200;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.btn-success {
+  @apply bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition duration-200;
+}
+
+.btn-danger {
+  @apply bg-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-700 transition duration-200;
+}
+
+/* Form styling */
+.form-input {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200;
+}
+
+.form-select {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-gray-700 mb-1;
+}
+
+/* Banking table styles */
+.bank-table {
+  @apply w-full bg-white rounded-xl shadow-lg overflow-hidden;
+}
+
+.bank-table thead {
+  @apply bg-gray-50;
+}
+
+.bank-table th {
+  @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+}
+
+.bank-table td {
+  @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900;
+}
+
+.bank-table tbody tr:hover {
+  @apply bg-gray-50;
+}
+
+/* Status badges */
+.status-active {
+  @apply bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-semibold;
+}
+
+.status-inactive {
+  @apply bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-semibold;
+}
+
+.status-pending {
+  @apply bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-semibold;
+}
+
+.status-completed {
+  @apply bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-semibold;
+}
+
+/* Navigation styling */
+.nav-link {
+  @apply px-4 py-2 rounded-lg transition hover:bg-blue-800;
+}
+
+.nav-link.active {
+  @apply bg-blue-700;
+}
+
+/* Dashboard cards */
+.dashboard-card {
+  @apply bg-white rounded-xl shadow-lg p-6 border-l-4;
+}
+
+.dashboard-card.primary {
+  @apply border-blue-500;
+}
+
+.dashboard-card.success {
+  @apply border-green-500;
+}
+
+.dashboard-card.warning {
+  @apply border-yellow-500;
+}
+
+.dashboard-card.danger {
+  @apply border-red-500;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .container {
+    @apply px-4;
+  }
+  
+  .bank-table {
+    font-size: 0.875rem;
+  }
+  
+  .bank-table th,
+  .bank-table td {
+    @apply px-3 py-2;
+  }
+}
+
+/* Loading animation */
+.loading-bar {
+  height: 3px;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa, #3b82f6);
+  background-size: 200% 100%;
+  animation: loading 2s ease-in-out infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Professional gradients for feature cards */
+.gradient-green {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.gradient-purple {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+}
+
+.gradient-orange {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.gradient-blue {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+}
+
+/* Professional shadows */
+.shadow-professional {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.shadow-professional-lg {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Smooth transitions */
+* {
+  transition: all 0.2s ease;
+}
+
+/* Banking-specific animations */
+.fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Professional banking typography */
+.banking-title {
+  @apply text-3xl font-bold text-gray-800 mb-2;
+}
+
+.banking-subtitle {
+  @apply text-gray-600 mb-8;
+}
+
+.banking-section-title {
+  @apply text-xl font-semibold text-gray-800 mb-4;
+}
+
+/* Currency styling */
+.currency-positive {
+  @apply text-green-600 font-semibold;
+}
+
+.currency-negative {
+  @apply text-red-600 font-semibold;
+}
+
+.currency-neutral {
+  @apply text-gray-800 font-semibold;
+}
+
+/* Banking form containers */
+.banking-form {
+  @apply bg-white rounded-xl shadow-lg p-8 max-w-2xl mx-auto;
+}
+
+.banking-form-section {
+  @apply space-y-6;
+}
+
+/* Error and success states */
+.error-message {
+  @apply bg-red-50 border-l-4 border-red-400 p-4 mb-6;
+}
+
+.error-text {
+  @apply text-red-700;
+}
+
+.success-message {
+  @apply bg-green-50 border-l-4 border-green-400 p-4 mb-6;
+}
+
+.success-text {
+  @apply text-green-700;
+}
+
+/* Banking navigation */
+.banking-nav {
+  @apply bg-blue-900 text-white shadow-lg;
+}
+
+.banking-nav-container {
+  @apply container mx-auto flex justify-between items-center p-4;
+}
+
+.banking-nav-brand {
+  @apply text-2xl font-bold;
+}
+
+.banking-nav-links {
+  @apply flex items-center space-x-4;
+}
+
+/* Mobile banking optimization */
+@media (max-width: 640px) {
+  .banking-nav-container {
+    @apply flex-col space-y-4;
+  }
+  
+  .banking-nav-links {
+    @apply flex-wrap justify-center;
+  }
+  
+  .banking-form {
+    @apply p-4 mx-4;
+  }
+  
+  .dashboard-card {
+    @apply p-4;
+  }
 }
