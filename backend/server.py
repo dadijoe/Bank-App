@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from pymongo import MongoClient
 from datetime import datetime, timedelta
@@ -10,6 +11,7 @@ import hashlib
 import uuid
 from typing import Optional, List
 import secrets
+import calendar
 
 app = FastAPI(title="Demo Banking API", version="1.0.0")
 
@@ -66,11 +68,23 @@ class AdminCreditDebit(BaseModel):
     description: str
     backdate: Optional[str] = None
 
+class UserStatusUpdate(BaseModel):
+    user_id: str
+    status: str  # active, inactive, suspended
+
 class Account(BaseModel):
     account_id: str
     account_type: str
     balance: float
     status: str
+
+class TransactionFilter(BaseModel):
+    account_id: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    transaction_type: Optional[str] = None
+    min_amount: Optional[float] = None
+    max_amount: Optional[float] = None
 
 # Utility functions
 def hash_password(password: str) -> str:
@@ -117,6 +131,9 @@ def create_user_accounts(user_id: str):
             "account_type": "checking",
             "balance": 1000.00,  # Demo starting balance
             "status": "active",
+            "interest_rate": 0.01,  # 1% annual interest
+            "monthly_fee": 5.00,
+            "minimum_balance": 100.00,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         },
@@ -127,6 +144,9 @@ def create_user_accounts(user_id: str):
             "account_type": "savings",
             "balance": 5000.00,  # Demo starting balance
             "status": "active",
+            "interest_rate": 0.025,  # 2.5% annual interest
+            "monthly_fee": 0.00,
+            "minimum_balance": 500.00,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
@@ -144,11 +164,73 @@ def create_transaction(transaction_data: dict):
     transaction = {
         "transaction_id": str(uuid.uuid4()),
         **transaction_data,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
     }
     result = db.transactions.insert_one(transaction)
     transaction["_id"] = str(result.inserted_id)
     return transaction
+
+def apply_monthly_interest(account_id: str):
+    """Apply monthly interest to savings accounts"""
+    account = db.accounts.find_one({"account_id": account_id})
+    if account and account["account_type"] == "savings":
+        monthly_interest = account["balance"] * (account["interest_rate"] / 12)
+        if monthly_interest > 0:
+            db.accounts.update_one(
+                {"account_id": account_id},
+                {"$inc": {"balance": monthly_interest}, "$set": {"updated_at": datetime.utcnow()}}
+            )
+            
+            # Create interest transaction
+            create_transaction({
+                "from_account_id": None,
+                "to_account_id": account_id,
+                "amount": monthly_interest,
+                "transfer_type": "interest_credit",
+                "description": "Monthly interest credit",
+                "status": "completed",
+                "user_id": account["user_id"]
+            })
+
+def apply_monthly_fees(account_id: str):
+    """Apply monthly fees to accounts"""
+    account = db.accounts.find_one({"account_id": account_id})
+    if account and account["monthly_fee"] > 0:
+        if account["balance"] >= account["monthly_fee"]:
+            db.accounts.update_one(
+                {"account_id": account_id},
+                {"$inc": {"balance": -account["monthly_fee"]}, "$set": {"updated_at": datetime.utcnow()}}
+            )
+            
+            # Create fee transaction
+            create_transaction({
+                "from_account_id": account_id,
+                "to_account_id": None,
+                "amount": account["monthly_fee"],
+                "transfer_type": "monthly_fee",
+                "description": "Monthly maintenance fee",
+                "status": "completed",
+                "user_id": account["user_id"]
+            })
+
+def serialize_mongo_doc(doc):
+    """Convert MongoDB document to JSON serializable format"""
+    if isinstance(doc, dict):
+        result = {}
+        for key, value in doc.items():
+            if key == "_id":
+                result[key] = str(value)
+            elif isinstance(value, datetime):
+                result[key] = value.isoformat()
+            elif isinstance(value, dict):
+                result[key] = serialize_mongo_doc(value)
+            elif isinstance(value, list):
+                result[key] = [serialize_mongo_doc(item) if isinstance(item, dict) else item for item in value]
+            else:
+                result[key] = value
+        return result
+    return doc
 
 # API Routes
 @app.get("/api/health")
@@ -177,6 +259,8 @@ async def register_user(user_data: UserRegistration):
         "date_of_birth": user_data.date_of_birth,
         "role": "customer",
         "status": "active",
+        "failed_login_attempts": 0,
+        "last_login": None,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
@@ -210,11 +294,35 @@ async def register_user(user_data: UserRegistration):
 @app.post("/api/auth/login")
 async def login_user(login_data: UserLogin):
     user = db.users.find_one({"email": login_data.email})
-    if not user or not verify_password(login_data.password, user["password"]):
+    if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     if user["status"] != "active":
         raise HTTPException(status_code=401, detail="Account is inactive")
+    
+    # Check for too many failed attempts
+    if user.get("failed_login_attempts", 0) >= 5:
+        raise HTTPException(status_code=401, detail="Account locked due to too many failed attempts")
+    
+    if not verify_password(login_data.password, user["password"]):
+        # Increment failed attempts
+        db.users.update_one(
+            {"user_id": user["user_id"]},
+            {"$inc": {"failed_login_attempts": 1}}
+        )
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Reset failed attempts and update last login
+    db.users.update_one(
+        {"user_id": user["user_id"]},
+        {
+            "$set": {
+                "failed_login_attempts": 0,
+                "last_login": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
     
     token = create_jwt_token(user)
     
@@ -244,7 +352,14 @@ async def get_user_accounts(current_user = Depends(get_current_user)):
     return {"accounts": accounts}
 
 @app.get("/api/accounts/{account_id}/transactions")
-async def get_account_transactions(account_id: str, current_user = Depends(get_current_user)):
+async def get_account_transactions(
+    account_id: str, 
+    current_user = Depends(get_current_user),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    transaction_type: Optional[str] = Query(None),
+    limit: int = Query(50, le=100)
+):
     # Verify account ownership or admin access
     account = db.accounts.find_one({"account_id": account_id})
     if not account:
@@ -253,9 +368,19 @@ async def get_account_transactions(account_id: str, current_user = Depends(get_c
     if current_user["role"] not in ["admin", "super_admin"] and account["user_id"] != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="Access denied")
     
-    transactions = list(db.transactions.find(
-        {"$or": [{"from_account_id": account_id}, {"to_account_id": account_id}]}
-    ).sort("created_at", -1).limit(50))
+    # Build query filters
+    query = {"$or": [{"from_account_id": account_id}, {"to_account_id": account_id}]}
+    
+    if start_date:
+        query["created_at"] = {"$gte": datetime.fromisoformat(start_date)}
+    if end_date:
+        if "created_at" not in query:
+            query["created_at"] = {}
+        query["created_at"]["$lte"] = datetime.fromisoformat(end_date)
+    if transaction_type:
+        query["transfer_type"] = transaction_type
+    
+    transactions = list(db.transactions.find(query).sort("created_at", -1).limit(limit))
     
     # Convert ObjectId to string to make it JSON serializable
     for transaction in transactions:
@@ -264,12 +389,74 @@ async def get_account_transactions(account_id: str, current_user = Depends(get_c
     
     return {"transactions": transactions}
 
+@app.get("/api/accounts/{account_id}/statement")
+async def get_account_statement(
+    account_id: str,
+    current_user = Depends(get_current_user),
+    month: int = Query(datetime.now().month),
+    year: int = Query(datetime.now().year)
+):
+    # Verify account ownership or admin access
+    account = db.accounts.find_one({"account_id": account_id})
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    if current_user["role"] not in ["admin", "super_admin"] and account["user_id"] != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get start and end dates for the month
+    start_date = datetime(year, month, 1)
+    if month == 12:
+        end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end_date = datetime(year, month + 1, 1) - timedelta(days=1)
+    
+    # Get transactions for the month
+    transactions = list(db.transactions.find({
+        "$or": [{"from_account_id": account_id}, {"to_account_id": account_id}],
+        "created_at": {"$gte": start_date, "$lte": end_date}
+    }).sort("created_at", 1))
+    
+    # Calculate statement data
+    opening_balance = account["balance"]
+    total_credits = sum(t["amount"] for t in transactions if t.get("to_account_id") == account_id)
+    total_debits = sum(t["amount"] for t in transactions if t.get("from_account_id") == account_id)
+    closing_balance = opening_balance + total_credits - total_debits
+    
+    # Serialize transactions
+    for transaction in transactions:
+        if "_id" in transaction:
+            transaction["_id"] = str(transaction["_id"])
+    
+    return {
+        "statement": {
+            "account_id": account_id,
+            "account_number": account["account_number"],
+            "account_type": account["account_type"],
+            "statement_period": f"{calendar.month_name[month]} {year}",
+            "opening_balance": opening_balance,
+            "total_credits": total_credits,
+            "total_debits": total_debits,
+            "closing_balance": closing_balance,
+            "transaction_count": len(transactions),
+            "transactions": transactions
+        }
+    }
+
 @app.post("/api/transfers")
 async def create_transfer(transfer_data: TransferRequest, current_user = Depends(get_current_user)):
     # Verify source account ownership
     from_account = db.accounts.find_one({"account_id": transfer_data.from_account_id})
     if not from_account or from_account["user_id"] != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="Invalid source account")
+    
+    # Check account status
+    if from_account["status"] != "active":
+        raise HTTPException(status_code=400, detail="Source account is not active")
+    
+    # Check transfer limits
+    if transfer_data.amount > 10000:  # Demo limit
+        raise HTTPException(status_code=400, detail="Transfer amount exceeds daily limit")
     
     # Check sufficient balance
     if from_account["balance"] < transfer_data.amount:
@@ -281,6 +468,9 @@ async def create_transfer(transfer_data: TransferRequest, current_user = Depends
         to_account = db.accounts.find_one({"account_id": transfer_data.to_account_id})
         if not to_account or to_account["user_id"] != current_user["user_id"]:
             raise HTTPException(status_code=400, detail="Invalid destination account")
+        
+        if to_account["status"] != "active":
+            raise HTTPException(status_code=400, detail="Destination account is not active")
         
         # Update balances
         db.accounts.update_one(
@@ -300,7 +490,8 @@ async def create_transfer(transfer_data: TransferRequest, current_user = Depends
             "transfer_type": transfer_data.transfer_type,
             "description": transfer_data.description,
             "status": "completed",
-            "user_id": current_user["user_id"]
+            "user_id": current_user["user_id"],
+            "confirmation_number": str(uuid.uuid4())[:8].upper()
         })
     
     elif transfer_data.transfer_type in ["wire", "domestic"]:
@@ -322,7 +513,9 @@ async def create_transfer(transfer_data: TransferRequest, current_user = Depends
             "recipient_bank": transfer_data.recipient_bank,
             "routing_number": transfer_data.routing_number,
             "status": "pending" if transfer_data.transfer_type == "wire" else "completed",
-            "user_id": current_user["user_id"]
+            "user_id": current_user["user_id"],
+            "confirmation_number": str(uuid.uuid4())[:8].upper(),
+            "estimated_arrival": datetime.utcnow() + timedelta(days=1 if transfer_data.transfer_type == "domestic" else 3)
         })
     
     # Convert ObjectId to string
@@ -331,7 +524,8 @@ async def create_transfer(transfer_data: TransferRequest, current_user = Depends
     
     return {
         "message": "Transfer initiated successfully",
-        "transaction": transaction
+        "transaction": transaction,
+        "confirmation_number": transaction["confirmation_number"]
     }
 
 # Admin routes
@@ -348,6 +542,33 @@ async def get_all_users(current_user = Depends(get_current_user)):
             user["_id"] = str(user["_id"])
     
     return {"users": users}
+
+@app.post("/api/admin/users/status")
+async def update_user_status(status_data: UserStatusUpdate, current_user = Depends(get_current_user)):
+    if current_user["role"] not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Prevent admins from deactivating themselves
+    if status_data.user_id == current_user["user_id"]:
+        raise HTTPException(status_code=400, detail="Cannot modify your own account status")
+    
+    user = db.users.find_one({"user_id": status_data.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Update user status
+    db.users.update_one(
+        {"user_id": status_data.user_id},
+        {"$set": {"status": status_data.status, "updated_at": datetime.utcnow()}}
+    )
+    
+    # Also update account statuses
+    db.accounts.update_many(
+        {"user_id": status_data.user_id},
+        {"$set": {"status": status_data.status, "updated_at": datetime.utcnow()}}
+    )
+    
+    return {"message": f"User status updated to {status_data.status}"}
 
 @app.get("/api/admin/accounts")
 async def get_all_accounts(current_user = Depends(get_current_user)):
@@ -373,6 +594,8 @@ async def get_all_accounts(current_user = Depends(get_current_user)):
                 "account_type": 1,
                 "balance": 1,
                 "status": 1,
+                "interest_rate": 1,
+                "monthly_fee": 1,
                 "user_name": {"$concat": ["$user_info.first_name", " ", "$user_info.last_name"]},
                 "user_email": "$user_info.email",
                 "created_at": 1
@@ -428,7 +651,9 @@ async def admin_credit_debit(transaction_data: AdminCreditDebit, current_user = 
         "description": transaction_data.description,
         "status": "completed",
         "admin_user_id": current_user["user_id"],
+        "confirmation_number": str(uuid.uuid4())[:8].upper(),
         "created_at": transaction_date,
+        "updated_at": datetime.utcnow(),
         "backdated": transaction_data.backdate is not None
     }
     
@@ -437,15 +662,30 @@ async def admin_credit_debit(transaction_data: AdminCreditDebit, current_user = 
     
     return {
         "message": f"Account {transaction_data.transaction_type} successful",
-        "transaction": transaction
+        "transaction": transaction,
+        "confirmation_number": transaction["confirmation_number"]
     }
 
 @app.get("/api/admin/transactions")
-async def get_all_transactions(current_user = Depends(get_current_user)):
+async def get_all_transactions(
+    current_user = Depends(get_current_user),
+    limit: int = Query(100, le=500),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None)
+):
     if current_user["role"] not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    transactions = list(db.transactions.find({}).sort("created_at", -1).limit(100))
+    # Build query
+    query = {}
+    if start_date:
+        query["created_at"] = {"$gte": datetime.fromisoformat(start_date)}
+    if end_date:
+        if "created_at" not in query:
+            query["created_at"] = {}
+        query["created_at"]["$lte"] = datetime.fromisoformat(end_date)
+    
+    transactions = list(db.transactions.find(query).sort("created_at", -1).limit(limit))
     
     # Convert ObjectId to string to make it JSON serializable
     for transaction in transactions:
@@ -453,6 +693,83 @@ async def get_all_transactions(current_user = Depends(get_current_user)):
             transaction["_id"] = str(transaction["_id"])
     
     return {"transactions": transactions}
+
+@app.get("/api/admin/analytics")
+async def get_admin_analytics(current_user = Depends(get_current_user)):
+    if current_user["role"] not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Get user statistics
+    total_users = db.users.count_documents({})
+    active_users = db.users.count_documents({"status": "active"})
+    new_users_this_month = db.users.count_documents({
+        "created_at": {"$gte": datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)}
+    })
+    
+    # Get account statistics
+    total_accounts = db.accounts.count_documents({})
+    total_balance = list(db.accounts.aggregate([
+        {"$group": {"_id": None, "total": {"$sum": "$balance"}}}
+    ]))
+    total_balance = total_balance[0]["total"] if total_balance else 0
+    
+    # Get transaction statistics
+    total_transactions = db.transactions.count_documents({})
+    transactions_today = db.transactions.count_documents({
+        "created_at": {"$gte": datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)}
+    })
+    
+    # Get transaction volume
+    transaction_volume = list(db.transactions.aggregate([
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]))
+    transaction_volume = transaction_volume[0]["total"] if transaction_volume else 0
+    
+    return {
+        "analytics": {
+            "users": {
+                "total": total_users,
+                "active": active_users,
+                "new_this_month": new_users_this_month
+            },
+            "accounts": {
+                "total": total_accounts,
+                "total_balance": total_balance
+            },
+            "transactions": {
+                "total": total_transactions,
+                "today": transactions_today,
+                "total_volume": transaction_volume
+            }
+        }
+    }
+
+@app.post("/api/admin/bulk-operations")
+async def bulk_operations(current_user = Depends(get_current_user)):
+    if current_user["role"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
+    
+    # Apply monthly interest to all savings accounts
+    savings_accounts = list(db.accounts.find({"account_type": "savings", "status": "active"}))
+    interest_applied = 0
+    
+    for account in savings_accounts:
+        apply_monthly_interest(account["account_id"])
+        interest_applied += 1
+    
+    # Apply monthly fees to all checking accounts
+    checking_accounts = list(db.accounts.find({"account_type": "checking", "status": "active"}))
+    fees_applied = 0
+    
+    for account in checking_accounts:
+        apply_monthly_fees(account["account_id"])
+        fees_applied += 1
+    
+    return {
+        "message": "Bulk operations completed",
+        "interest_applied": interest_applied,
+        "fees_applied": fees_applied
+    }
 
 # Create admin user on startup
 @app.on_event("startup")
@@ -473,6 +790,8 @@ async def create_admin_user():
             "date_of_birth": "1980-01-01",
             "role": "super_admin",
             "status": "active",
+            "failed_login_attempts": 0,
+            "last_login": None,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
