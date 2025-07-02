@@ -1,7 +1,7 @@
 import requests
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class BankingAPITester:
     def __init__(self):
@@ -10,6 +10,7 @@ class BankingAPITester:
         self.admin_token = None
         self.customer_user_id = None
         self.customer_accounts = []
+        self.transaction_id = None
         
         # Generate unique email for testing
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -18,6 +19,9 @@ class BankingAPITester:
         # Admin credentials
         self.admin_email = "admin@demobank.com"
         self.admin_password = "admin123"
+        
+        # Failed login tracking
+        self.failed_login_attempts = 0
         
         self.tests_run = 0
         self.tests_passed = 0
