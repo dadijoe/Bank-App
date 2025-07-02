@@ -146,7 +146,8 @@ def create_transaction(transaction_data: dict):
         **transaction_data,
         "created_at": datetime.utcnow()
     }
-    db.transactions.insert_one(transaction)
+    result = db.transactions.insert_one(transaction)
+    transaction["_id"] = str(result.inserted_id)
     return transaction
 
 # API Routes
